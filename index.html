@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="display: flex; min-height: 100vh; font-family: 'Segoe UI', sans-serif; background-color: #f4f4f4;">
+
+    <!-- Sidebar -->
+    <nav style="width: 250px; background-color: #1c1c1c; color: white; padding: 30px 20px;">
+        <h2 style="margin-bottom: 30px;">🎬 Creator Panel</h2>
+        <ul style="list-style: none; padding-left: 0;">
+            <li style="margin-bottom: 15px;">
+                <a href="{{ url_for('upload') }}" style="color: white; text-decoration: none; display: block; padding: 10px; border-radius: 5px; background-color: #343a40;">➕ Upload Video</a>
+            </li>
+            <li style="margin-bottom: 15px;">
+                <a href="{{ url_for('my_videos') }}" style="color: white; text-decoration: none; display: block; padding: 10px; border-radius: 5px; background-color: #343a40;">📁 My Videos</a>
+            </li>
+            <li style="margin-bottom: 15px;">
+                <a href="{{ url_for('view_videos') }}" style="color: white; text-decoration: none; display: block; padding: 10px; border-radius: 5px; background-color: #343a40;">👁️ View Videos</a>
+            </li>
+        </ul>
+    </nav>
+
+    <!-- Main Content -->
+    <main style="flex-grow: 1; padding: 50px;">
+        <div style="margin-bottom: 30px;">
+            <h1 style="font-size: 2.5rem; margin-bottom: 10px;">Welcome, Creator!</h1>
+            {% if current_user.is_authenticated %}
+                <p style="color: #555;">Logged in as <strong>{{ current_user.email }}</strong></p>
+            {% endif %}
+        </div>
+
+        <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1);">
+            <p style="font-size: 1.2rem; margin-bottom: 20px;">Manage your content, track performance, and engage your audience.</p>
+            {% if not current_user.is_authenticated %}
+                <a href="{{ url_for('login') }}" style="display: inline-block; padding: 10px 20px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px;">Login to Get Started</a>
+            {% endif %}
+        </div>
+    </main>
+
+</div>
+{% endblock %}
