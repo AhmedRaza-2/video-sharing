@@ -129,5 +129,5 @@ def view_videos():
 
 import os
 
-port = int(os.environ.get("PORT", 8000))  # Azure will set PORT
+port = int(os.environ.get("PORT", 8010))  # Azure will set PORT
 app.run(host="0.0.0.0", port=port, debug=True)
