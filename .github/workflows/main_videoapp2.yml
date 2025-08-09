@@ -1,4 +1,4 @@
-name: Build and deploy Python app to Azure Web App - videoapp2
+name: Build & Deploy to Azure Web App - videoapp2
 
 permissions:
   id-token: write
@@ -6,8 +6,7 @@ permissions:
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
@@ -15,49 +14,44 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set up Python version
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Create and start virtual environment
-        run: |
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: |
           python -m venv venv
           source venv/bin/activate
-      
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Upload artifact for deployment jobs
-        uses: actions/upload-artifact@v4
+      - run: pip install -r requirements.txt
+      - uses: actions/upload-artifact@v4
         with:
           name: python-app
           path: |
             .
             !venv/
-            !.git/
-            !.github/
 
   deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Download artifact from build job
-        uses: actions/download-artifact@v4
-        with:
-          name: python-app
-      
-      - name: Login to Azure
-        uses: azure/login@v2
+      - uses: actions/download-artifact@v4
+        with: { name: python-app }
+
+      - name: Debug OIDC issuance
+        shell: bash
+        run: |
+          echo "URL   : $ACTIONS_ID_TOKEN_REQUEST_URL"
+          echo "TOKEN : ${ACTIONS_ID_TOKEN_REQUEST_TOKEN:0:100}..."
+          test -n "$ACTIONS_ID_TOKEN_REQUEST_TOKEN" || exit 1
+
+      - uses: azure/login@v2
+        name: Login via OIDC
         with:
           client-id:        ${{ secrets.AZUREAPPSERVICE_CLIENTID }}
           tenant-id:        ${{ secrets.AZUREAPPSERVICE_TENANTID }}
           subscription-id:  ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}
           audience:         api://AzureADTokenExchange
 
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
+      - run: az account show
+
+      - uses: azure/webapps-deploy@v3
         with:
-          app-name: 'videoapp2'
-          slot-name: 'Production'
+          app-name: videoapp2
+          slot-name: Production
