@@ -11,11 +11,11 @@ import cloudinary.uploader
 app = Flask(__name__)
 app.secret_key = 'super_secure_key_123'  # 🔐 Replace with a strong secret
 
-import firebase_admin
-from firebase_admin import credentials
-
-cred = credentials.Certificate("firebase_config.json")
+import json, os
+cred_dict = json.loads(os.environ["FIREBASE_CONFIG"])
+cred = credentials.Certificate(cred_dict)
 firebase_admin.initialize_app(cred)
+
 
 
 # 🔑 Firebase Web API Key
