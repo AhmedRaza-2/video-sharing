@@ -1,31 +1,36 @@
 import os
 import json
 import requests
-
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-
 import firebase_admin
 from firebase_admin import credentials, auth as firebase_auth
 import cloudinary
 import cloudinary.uploader
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "super_secure_key_123")
+app.secret_key = 'super_secure_key_123'  # 🔐 Replace with a strong secret
 
-# 🔐 Firebase Admin SDK Initialization
-firebase_creds = os.environ.get("FIREBASE_CREDENTIALS")
+# 🔐 Firebase Admin SDK Configuration
+firebase_config = {
+    "type": "service_account",
+    "project_id": "video-656cd",
+    "private_key_id": "13908bf668393201a1ed9cfd1786486a6f977420",
+    "private_key": os.environ.get("FIREBASE_PRIVATE_KEY", "").replace("\\n", "\n"),
+    "client_email": "firebase-adminsdk-fbsvc@video-656cd.iam.gserviceaccount.com",
+    "client_id": "102872420138978231133",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40video-656cd.iam.gserviceaccount.com"
+}
 
 if not firebase_admin._apps:
-    if firebase_creds:
-        cred_dict = json.loads(firebase_creds)
-        cred = credentials.Certificate(cred_dict)
-    else:
-        raise RuntimeError("FIREBASE_CREDENTIALS env var not set in Azure App Service!")
+    cred = credentials.Certificate(firebase_config)
     firebase_admin.initialize_app(cred)
 
-# Your Firebase Web API Key (for password login)
-FIREBASE_WEB_API_KEY = os.environ.get("FIREBASE_WEB_API_KEY", "AIzaSyDu92oz4n6y1anUuampNve5jxrCbPWogdk")
+# 🔑 Firebase Web API Key
+FIREBASE_WEB_API_KEY = "AIzaSyDu92oz4n6y1anUuampNve5jxrCbPWogdk"
 
 # 🔑 Flask-Login Setup
 login_manager = LoginManager()
@@ -45,55 +50,50 @@ def load_user(user_id):
 
 # 🎥 Cloudinary Configuration
 cloudinary.config(
-    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME", "dmr3w4jgu"),
-    api_key=os.environ.get("CLOUDINARY_API_KEY", "321578829594452"),
-    api_secret=os.environ.get("CLOUDINARY_API_SECRET", "k9XfYOMX-rWPf9kannC39Ja1sIE")
+    cloud_name='dmr3w4jgu',
+    api_key='321578829594452',
+    api_secret='k9XfYOMX-rWPf9kannC39Ja1sIE'
 )
 
-videos = []  # In-memory storage
+videos = []
 
-# ----------------- Helpers -----------------
+# ✅ Helper function to verify password
 def verify_firebase_password(email, password):
-    """Verify password using Firebase REST API"""
     url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}"
     payload = {"email": email, "password": password, "returnSecureToken": True}
     try:
-        response = requests.post(url, json=payload)
-        return response.json() if response.status_code == 200 else None
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        return response.json()
     except Exception as e:
         print(f"Password verification error: {e}")
         return None
 
-# ----------------- Routes -----------------
-@app.route("/")
-@login_required
-def home():
-    return render_template("index.html")
-
-@app.route("/signup", methods=["GET", "POST"])
+# Routes
+@app.route('/signup', methods=['GET', 'POST'])
 def signup():
-    if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
         if not email or not password:
             flash("Missing email or password", "error")
-            return render_template("signup.html")
+            return render_template('signup.html')
         try:
             firebase_auth.create_user(email=email, password=password)
             flash("Account created successfully! Please log in.", "success")
-            return redirect(url_for("login"))
+            return redirect(url_for('login'))
         except Exception as e:
             flash(f"Signup failed: {str(e)}", "error")
-    return render_template("signup.html")
+    return render_template('signup.html')
 
-@app.route("/login", methods=["GET", "POST"])
+@app.route('/login', methods=['GET', 'POST'])
 def login():
-    if request.method == "POST":
-        email = request.form.get("email")
-        password = request.form.get("password")
+    if request.method == 'POST':
+        email = request.form.get('email')
+        password = request.form.get('password')
         if not email or not password:
             flash("Missing email or password", "error")
-            return render_template("login.html")
+            return render_template('login.html')
         try:
             user_record = firebase_auth.get_user_by_email(email)
             auth_result = verify_firebase_password(email, password)
@@ -103,58 +103,55 @@ def login():
                 user_store[uid] = flask_user
                 login_user(flask_user)
                 flash("Logged in successfully!", "success")
-                return redirect(url_for("home"))
+                return redirect(url_for('home'))
             else:
                 flash("Invalid email or password", "error")
         except Exception as e:
             flash(f"Login failed: {str(e)}", "error")
-    return render_template("login.html")
+    return render_template('login.html')
 
-@app.route("/logout")
+@app.route('/logout')
 @login_required
 def logout():
     logout_user()
     flash("Logged out successfully!", "info")
-    return redirect(url_for("login"))
+    return redirect(url_for('login'))
 
-@app.route("/upload", methods=["GET", "POST"])
+@app.route('/')
+@login_required
+def home():
+    return render_template('index.html')
+
+@app.route('/upload', methods=['GET', 'POST'])
 @login_required
 def upload():
-    if request.method == "POST":
-        file = request.files.get("file")
-        if not file:
+    if request.method == 'POST':
+        file = request.files.get('file')
+        if not file or file.filename == '':
             flash("No file selected", "error")
-            return render_template("upload.html")
+            return render_template('upload.html')
         try:
             upload_result = cloudinary.uploader.upload_large(
-                file.stream,
-                resource_type="video",
-                folder="video_uploads"
+                file.stream, resource_type="video", folder="video_uploads"
             )
+            video_url = upload_result['secure_url']
             videos.append({
-                "url": upload_result["secure_url"],
-                "uploader": current_user.email,
-                "filename": file.filename,
-                "upload_time": upload_result.get("created_at", "")
+                'url': video_url,
+                'uploader': current_user.email,
+                'filename': file.filename,
+                'upload_time': upload_result.get('created_at', '')
             })
             flash("Video uploaded successfully!", "success")
-            return redirect(url_for("view_videos"))
+            return redirect(url_for('view_videos'))
         except Exception as e:
             flash(f"Upload failed: {str(e)}", "error")
-    return render_template("upload.html")
+    return render_template('upload.html')
 
-@app.route("/videos")
+@app.route('/videos')
 @login_required
 def view_videos():
-    return render_template("viewer.html", videos=videos)
+    return render_template('viewer.html', videos=videos)
 
-@app.route("/my-videos")
-@login_required
-def my_videos():
-    user_videos = [v for v in videos if v["uploader"] == current_user.email]
-    return render_template("viewer.html", videos=user_videos)
-
-# ----------------- Azure Entry -----------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=True)
