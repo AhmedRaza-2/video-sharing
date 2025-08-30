@@ -13,8 +13,16 @@ app.secret_key = 'super_secure_key_123'  # 🔐 Replace with a strong secret
 
 import json, os
 cred_dict = json.loads(os.environ["FIREBASE_CONFIG"])
+
+# 🔑 Fix private key newlines
+if "private_key" in cred_dict:
+    cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+
 cred = credentials.Certificate(cred_dict)
-firebase_admin.initialize_app(cred)
+
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred)
+
 
 
 
