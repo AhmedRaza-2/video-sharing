@@ -11,23 +11,12 @@ import cloudinary.uploader
 app = Flask(__name__)
 app.secret_key = 'super_secure_key_123'  # 🔐 Replace with a strong secret
 
-# 🔐 Firebase Admin SDK Configuration
-firebase_config = {
-    "type": "service_account",
-    "project_id": "video-656cd",
-    "private_key_id": "13908bf668393201a1ed9cfd1786486a6f977420",
-    "private_key": os.environ.get("FIREBASE_PRIVATE_KEY", "").replace("\\n", "\n"),
-    "client_email": "firebase-adminsdk-fbsvc@video-656cd.iam.gserviceaccount.com",
-    "client_id": "102872420138978231133",
-    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-    "token_uri": "https://oauth2.googleapis.com/token",
-    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40video-656cd.iam.gserviceaccount.com"
-}
+import firebase_admin
+from firebase_admin import credentials
 
-if not firebase_admin._apps:
-    cred = credentials.Certificate(firebase_config)
-    firebase_admin.initialize_app(cred)
+cred = credentials.Certificate("firebase_config.json")
+firebase_admin.initialize_app(cred)
+
 
 # 🔑 Firebase Web API Key
 FIREBASE_WEB_API_KEY = "AIzaSyDu92oz4n6y1anUuampNve5jxrCbPWogdk"
