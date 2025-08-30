@@ -22,10 +22,6 @@ cred = credentials.Certificate(cred_dict)
 
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
-
-
-
-
 # 🔑 Firebase Web API Key
 FIREBASE_WEB_API_KEY = "AIzaSyDu92oz4n6y1anUuampNve5jxrCbPWogdk"
 
@@ -67,44 +63,71 @@ def verify_firebase_password(email, password):
         return None
 
 # Routes
+# Signup route
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
+
         if not email or not password:
             flash("Missing email or password", "error")
             return render_template('signup.html')
+
         try:
-            firebase_auth.create_user(email=email, password=password)
-            flash("Account created successfully! Please log in.", "success")
-            return redirect(url_for('login'))
+            # Firebase REST API for signup
+            url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}"
+            payload = {"email": email, "password": password, "returnSecureToken": True}
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            # Add user to Flask-Login
+            uid = data["localId"]
+            flask_user = User(uid, email)
+            user_store[uid] = flask_user
+            login_user(flask_user)
+
+            flash("Account created & logged in successfully!", "success")
+            return redirect(url_for('home'))
+
         except Exception as e:
             flash(f"Signup failed: {str(e)}", "error")
+
     return render_template('signup.html')
 
+
+# Login route
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         email = request.form.get('email')
         password = request.form.get('password')
+
         if not email or not password:
             flash("Missing email or password", "error")
             return render_template('login.html')
+
         try:
-            user_record = firebase_auth.get_user_by_email(email)
-            auth_result = verify_firebase_password(email, password)
-            if auth_result:
-                uid = user_record.uid
-                flask_user = User(uid, email)
-                user_store[uid] = flask_user
-                login_user(flask_user)
-                flash("Logged in successfully!", "success")
-                return redirect(url_for('home'))
-            else:
-                flash("Invalid email or password", "error")
+            # Firebase REST API for login
+            url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}"
+            payload = {"email": email, "password": password, "returnSecureToken": True}
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+
+            # Add user to Flask-Login
+            uid = data["localId"]
+            flask_user = User(uid, email)
+            user_store[uid] = flask_user
+            login_user(flask_user)
+
+            flash("Logged in successfully!", "success")
+            return redirect(url_for('home'))
+
         except Exception as e:
-            flash(f"Login failed: {str(e)}", "error")
+            flash("Invalid email or password", "error")
+
     return render_template('login.html')
 
 @app.route('/logout')
