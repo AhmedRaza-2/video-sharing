@@ -63,7 +63,7 @@ def verify_firebase_password(email, password):
         return None
 
 # Routes
-# Signup route
+# Signup
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
@@ -74,36 +74,25 @@ def signup():
             flash("Missing email or password", "error")
             return render_template('signup.html')
 
-        try:
-            # Firebase REST API for signup
-            url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}"
-            payload = {"email": email, "password": password, "returnSecureToken": True}
-            response = requests.post(url, json=payload, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+        url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}"
+        payload = {"email": email, "password": password, "returnSecureToken": True}
+        response = requests.post(url, json=payload, timeout=10)
+        data = response.json()
 
-            # Add user to Flask-Login
+        if "error" in data:
+            flash(f"Signup failed: {data['error']['message']}", "error")
+        else:
             uid = data["localId"]
             flask_user = User(uid, email)
             user_store[uid] = flask_user
             login_user(flask_user)
-
             flash("Account created & logged in successfully!", "success")
             return redirect(url_for('home'))
 
-        except Exception as e:
-            flash(f"Signup failed: {str(e)}", "error")
-
     return render_template('signup.html')
 
-@app.route('/my_videos')
-@login_required
-def my_videos():
-    # Show only current user's uploaded videos
-    user_videos = [v for v in videos if v['uploader'] == current_user.email]
-    return render_template('viewer.html', videos=user_videos)
 
-# Login route
+# Login
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -114,28 +103,22 @@ def login():
             flash("Missing email or password", "error")
             return render_template('login.html')
 
-        try:
-            # Firebase REST API for login
-            url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}"
-            payload = {"email": email, "password": password, "returnSecureToken": True}
-            response = requests.post(url, json=payload, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+        url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}"
+        payload = {"email": email, "password": password, "returnSecureToken": True}
+        response = requests.post(url, json=payload, timeout=10)
+        data = response.json()
 
-            # Add user to Flask-Login
+        if "error" in data:
+            flash(f"Login failed: {data['error']['message']}", "error")
+        else:
             uid = data["localId"]
             flask_user = User(uid, email)
             user_store[uid] = flask_user
             login_user(flask_user)
-
             flash("Logged in successfully!", "success")
             return redirect(url_for('home'))
 
-        except Exception as e:
-            flash("Invalid email or password", "error")
-
     return render_template('login.html')
-
 @app.route('/logout')
 @login_required
 def logout():
