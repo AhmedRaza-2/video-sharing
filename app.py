@@ -16,17 +16,18 @@ import cloudinary
 import cloudinary.uploader
 
 app = Flask(__name__)
-app.secret_key = 'super_secure_key_123'  # replace with env var in prod
+# Use SECRET_KEY from env if available
+app.secret_key = os.environ.get("SECRET_KEY", "super_secure_key_123")  
 
-# ----------------- FIREBASE CONFIG -----------------
+# Firebase config
 if "FIREBASE_CONFIG" in os.environ:
     cred_dict = json.loads(os.environ["FIREBASE_CONFIG"])
     if "private_key" in cred_dict:
         cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
     cred = credentials.Certificate(cred_dict)
 else:
+    # Only fallback for local dev
     cred = credentials.Certificate("firebase_config.json")
-
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
