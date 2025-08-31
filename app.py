@@ -96,6 +96,12 @@ def signup():
 
     return render_template('signup.html')
 
+@app.route('/my_videos')
+@login_required
+def my_videos():
+    # Show only current user's uploaded videos
+    user_videos = [v for v in videos if v['uploader'] == current_user.email]
+    return render_template('viewer.html', videos=user_videos)
 
 # Login route
 @app.route('/login', methods=['GET', 'POST'])
