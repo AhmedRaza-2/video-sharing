@@ -18,6 +18,11 @@ import cloudinary.uploader
 # ----------------- APP SETUP -----------------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "super_secure_key_123")
+app.config.update(
+    SESSION_COOKIE_SECURE=True,      # Required if using HTTPS
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",   # Avoid cross-site issues
+)
 
 # ----------------- FIREBASE CONFIG -----------------
 if "FIREBASE_CONFIG" in os.environ:
