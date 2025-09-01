@@ -1,5 +1,5 @@
-import os
 import json
+import logging
 import requests
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import (
@@ -14,6 +14,11 @@ import firebase_admin
 from firebase_admin import credentials
 import cloudinary
 import cloudinary.uploader
+
+# ----------------- LOGGING -----------------
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+logger.info("Starting CreatorApp...")
 
 # ----------------- APP SETUP -----------------
 app = Flask(__name__)
@@ -57,7 +62,7 @@ I7wr4Gh+26oRWUnvjNBNQ0s=
     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
     "token_uri": "https://oauth2.googleapis.com/token",
     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40video-656cd.iam.gserviceaccount.com"
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc@video-656cd.iam.gserviceaccount.com"
 }
 
 cred = credentials.Certificate(firebase_config)
@@ -71,8 +76,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-# Global user store for dev
-user_store = {}
+user_store = {}  # Global user store
 
 class User(UserMixin):
     def __init__(self, uid, email):
@@ -81,7 +85,9 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return user_store.get(user_id)
+    user = user_store.get(user_id)
+    logger.debug(f"Loading user {user_id}: {user}")
+    return user
 
 # ----------------- CLOUDINARY -----------------
 cloudinary.config(
@@ -96,6 +102,7 @@ videos = []
 @app.route("/")
 @login_required
 def home():
+    logger.debug(f"Accessing home page: {current_user.email}")
     return render_template("index.html")
 
 @app.route("/signup", methods=["GET", "POST"])
@@ -103,25 +110,35 @@ def signup():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
+        logger.debug(f"Signup attempt: {email}")
+
         if not email or not password:
             flash("Missing email or password", "error")
+            logger.warning("Signup failed: missing email or password")
             return redirect(url_for("signup"))
 
-        url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}"
-        payload = {"email": email, "password": password, "returnSecureToken": True}
-        resp = requests.post(url, json=payload)
-        data = resp.json()
+        try:
+            url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}"
+            payload = {"email": email, "password": password, "returnSecureToken": True}
+            resp = requests.post(url, json=payload)
+            data = resp.json()
+            logger.debug(f"Firebase signup response: {data}")
 
-        if "error" in data:
-            flash(f"Signup failed: {data['error']['message']}", "error")
+            if "error" in data:
+                flash(f"Signup failed: {data['error']['message']}", "error")
+                return redirect(url_for("signup"))
+
+            uid = data["localId"]
+            user = User(uid, email)
+            user_store[uid] = user
+            login_user(user)
+            logger.info(f"User signed up: {email}")
+            flash("Account created & logged in!", "success")
+            return redirect(url_for("home"))
+        except Exception as e:
+            logger.exception(f"Signup exception: {e}")
+            flash(f"Signup error: {str(e)}", "error")
             return redirect(url_for("signup"))
-
-        uid = data["localId"]
-        user = User(uid, email)
-        user_store[uid] = user
-        login_user(user)
-        flash("Account created & logged in!", "success")
-        return redirect(url_for("home"))
 
     return render_template("signup.html")
 
@@ -130,33 +147,47 @@ def login():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
+        logger.debug(f"Login attempt: {email}")
+
         if not email or not password:
             flash("Missing email or password", "error")
             return redirect(url_for("login"))
 
-        url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}"
-        payload = {"email": email, "password": password, "returnSecureToken": True}
-        resp = requests.post(url, json=payload)
-        data = resp.json()
+        try:
+            url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}"
+            payload = {"email": email, "password": password, "returnSecureToken": True}
+            resp = requests.post(url, json=payload)
+            data = resp.json()
+            logger.debug(f"Firebase login response: {data}")
 
-        if "error" in data:
-            flash(f"Login failed: {data['error']['message']}", "error")
+            if "error" in data:
+                flash(f"Login failed: {data['error']['message']}", "error")
+                return redirect(url_for("login"))
+
+            uid = data["localId"]
+            user = User(uid, email)
+            user_store[uid] = user
+            login_user(user)
+            logger.info(f"User logged in: {email}")
+            flash("Logged in successfully!", "success")
+            return redirect(url_for("home"))
+        except Exception as e:
+            logger.exception(f"Login exception: {e}")
+            flash(f"Login error: {str(e)}", "error")
             return redirect(url_for("login"))
-
-        uid = data["localId"]
-        user = User(uid, email)
-        user_store[uid] = user
-        login_user(user)
-        flash("Logged in successfully!", "success")
-        return redirect(url_for("home"))
 
     return render_template("login.html")
 
 @app.route("/logout")
 @login_required
 def logout():
-    logout_user()
-    flash("Logged out successfully!", "info")
+    try:
+        email = current_user.email
+        logout_user()
+        logger.info(f"User logged out: {email}")
+        flash("Logged out successfully!", "info")
+    except Exception as e:
+        logger.exception(f"Logout error: {e}")
     return redirect(url_for("login"))
 
 @app.route("/upload", methods=["GET", "POST"])
@@ -164,9 +195,12 @@ def logout():
 def upload():
     if request.method == "POST":
         file = request.files.get("file")
+        logger.debug(f"Upload attempt: {file.filename if file else 'No file'} by {current_user.email}")
+
         if not file or file.filename == "":
             flash("No file selected", "error")
             return redirect(url_for("upload"))
+
         try:
             result = cloudinary.uploader.upload_large(file.stream, resource_type="video", folder="video_uploads")
             videos.append({
@@ -175,9 +209,11 @@ def upload():
                 "filename": file.filename,
                 "upload_time": result.get("created_at", "")
             })
+            logger.info(f"Video uploaded: {file.filename}")
             flash("Video uploaded successfully!", "success")
             return redirect(url_for("view_videos"))
         except Exception as e:
+            logger.exception(f"Upload failed: {e}")
             flash(f"Upload failed: {str(e)}", "error")
             return redirect(url_for("upload"))
 
@@ -186,14 +222,17 @@ def upload():
 @app.route("/videos")
 @login_required
 def view_videos():
+    logger.debug(f"Viewing all videos by {current_user.email}")
     return render_template("viewer.html", videos=videos)
 
 @app.route("/my_videos")
 @login_required
 def my_videos():
     user_videos = [v for v in videos if v["uploader"] == current_user.email]
+    logger.debug(f"My videos count: {len(user_videos)}")
     return render_template("viewer.html", videos=user_videos)
 
 # ----------------- RUN APP -----------------
 if __name__ == "__main__":
+    logger.info("Running Flask app...")
     app.run(debug=True, host="0.0.0.0", port=8000)
