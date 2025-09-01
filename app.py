@@ -68,6 +68,14 @@ cloudinary.config(
 
 videos = []  # Simple in-memory store; consider DB for production
 
+@app.before_request
+def debug_session():
+    print("=== DEBUG SESSION ===")
+    print("Path:", request.path)
+    print("Session:", dict(session))
+    print("Current user authenticated:", current_user.is_authenticated)
+    print("Current user email:", getattr(current_user, 'email', None))
+    print("=====================")
 
 # ----------------- ROUTES -----------------
 @app.route("/")
