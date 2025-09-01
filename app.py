@@ -2,14 +2,8 @@ import os
 import json
 import requests
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-from flask_login import (
-    LoginManager,
-    UserMixin,
-    login_user,
-    login_required,
-    logout_user,
-    current_user,
-)
+from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
+from flask_session import Session
 import firebase_admin
 from firebase_admin import credentials
 import cloudinary
@@ -18,11 +12,16 @@ import cloudinary.uploader
 # ----------------- APP SETUP -----------------
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "super_secure_key_123")
-app.config.update(
-    SESSION_COOKIE_SECURE=True,      # Required if using HTTPS
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",   # Avoid cross-site issues
-)
+
+# Use Flask-Session for persistent sessions
+app.config["SESSION_TYPE"] = "filesystem"  # Use filesystem for Azure
+app.config["SESSION_FILE_DIR"] = "/tmp/flask_session"
+app.config["SESSION_PERMANENT"] = False
+app.config["SESSION_USE_SIGNER"] = True
+app.config["SESSION_COOKIE_SECURE"] = True  # Ensure HTTPS
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+Session(app)
 
 # ----------------- FIREBASE CONFIG -----------------
 if "FIREBASE_CONFIG" in os.environ:
@@ -31,20 +30,17 @@ if "FIREBASE_CONFIG" in os.environ:
         cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
     cred = credentials.Certificate(cred_dict)
 else:
-    # Only fallback for local dev
     cred = credentials.Certificate("firebase_config.json")
 
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
-# Firebase Web API key
 FIREBASE_WEB_API_KEY = os.environ.get("FIREBASE_WEB_API_KEY", "YOUR_FIREBASE_WEB_API_KEY")
 
 # ----------------- FLASK-LOGIN SETUP -----------------
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
-
 
 class User(UserMixin):
     def __init__(self, uid, email):
@@ -57,8 +53,6 @@ def load_user(user_id):
         return User(user_id, session.get("user_email"))
     return None
 
-
-
 # ----------------- CLOUDINARY CONFIG -----------------
 cloudinary.config(
     cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME", "dmr3w4jgu"),
@@ -66,16 +60,7 @@ cloudinary.config(
     api_secret=os.environ.get("CLOUDINARY_API_SECRET", "k9XfYOMX-rWPf9kannC39Ja1sIE"),
 )
 
-videos = []  # Simple in-memory store; consider DB for production
-
-@app.before_request
-def debug_session():
-    print("=== DEBUG SESSION ===")
-    print("Path:", request.path)
-    print("Session:", dict(session))
-    print("Current user authenticated:", current_user.is_authenticated)
-    print("Current user email:", getattr(current_user, 'email', None))
-    print("=====================")
+videos = []
 
 # ----------------- ROUTES -----------------
 @app.route("/")
@@ -83,13 +68,11 @@ def debug_session():
 def home():
     return render_template("index.html")
 
-
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
-
         if not email or not password:
             flash("Missing email or password", "error")
             return redirect(url_for("signup"))
@@ -113,13 +96,11 @@ def signup():
 
     return render_template("signup.html")
 
-
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
         email = request.form.get("email")
         password = request.form.get("password")
-
         if not email or not password:
             flash("Missing email or password", "error")
             return redirect(url_for("login"))
@@ -143,7 +124,6 @@ def login():
 
     return render_template("login.html")
 
-
 @app.route("/logout")
 @login_required
 def logout():
@@ -153,7 +133,6 @@ def logout():
     flash("Logged out successfully!", "info")
     return redirect(url_for("login"))
 
-
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
 def upload():
@@ -162,7 +141,6 @@ def upload():
         if not file or file.filename == "":
             flash("No file selected", "error")
             return redirect(url_for("upload"))
-
         try:
             upload_result = cloudinary.uploader.upload_large(
                 file.stream, resource_type="video", folder="video_uploads"
@@ -184,19 +162,16 @@ def upload():
 
     return render_template("upload.html")
 
-
 @app.route("/videos")
 @login_required
 def view_videos():
     return render_template("viewer.html", videos=videos)
-
 
 @app.route("/my_videos")
 @login_required
 def my_videos():
     user_videos = [v for v in videos if v["uploader"] == current_user.email]
     return render_template("viewer.html", videos=user_videos)
-
 
 # ----------------- MAIN -----------------
 if __name__ == "__main__":
