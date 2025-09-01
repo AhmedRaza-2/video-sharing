@@ -1,6 +1,7 @@
+import os
 import json
 import requests
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import (
     LoginManager,
     UserMixin,
@@ -16,15 +17,10 @@ import cloudinary.uploader
 
 # ----------------- APP SETUP -----------------
 app = Flask(__name__)
-app.secret_key = "super_secure_key_123"  # Hardcoded secret key
-app.config.update(
-    SESSION_COOKIE_SECURE=False,  # False for testing HTTP
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
-)
+app.secret_key = "super_secure_key_123"
 
-# ----------------- FIREBASE CONFIG -----------------
-cred_dict = {
+# ----------------- FIREBASE CONFIG (HARDCODED) -----------------
+firebase_config = {
     "type": "service_account",
     "project_id": "video-656cd",
     "private_key_id": "8818b8bdfea9c1dc64627d12c99aa68a92898c99",
@@ -61,20 +57,22 @@ I7wr4Gh+26oRWUnvjNBNQ0s=
     "auth_uri": "https://accounts.google.com/o/oauth2/auth",
     "token_uri": "https://oauth2.googleapis.com/token",
     "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc@video-656cd.iam.gserviceaccount.com",
-    "universe_domain": "googleapis.com"
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc%40video-656cd.iam.gserviceaccount.com"
 }
 
-cred = credentials.Certificate(cred_dict)
+cred = credentials.Certificate(firebase_config)
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
 FIREBASE_WEB_API_KEY = "AIzaSyDu92oz4n6y1anUuampNve5jxrCbPWogdk"
 
-# ----------------- FLASK-LOGIN SETUP -----------------
+# ----------------- FLASK-LOGIN -----------------
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
+
+# Global user store for dev
+user_store = {}
 
 class User(UserMixin):
     def __init__(self, uid, email):
@@ -83,15 +81,13 @@ class User(UserMixin):
 
 @login_manager.user_loader
 def load_user(user_id):
-    if session.get("user_id") == user_id:
-        return User(user_id, session.get("user_email"))
-    return None
+    return user_store.get(user_id)
 
-# ----------------- CLOUDINARY CONFIG -----------------
+# ----------------- CLOUDINARY -----------------
 cloudinary.config(
     cloud_name="dmr3w4jgu",
     api_key="321578829594452",
-    api_secret="k9XfYOMX-rWPf9kannC39Ja1sIE",
+    api_secret="k9XfYOMX-rWPf9kannC39Ja1sIE"
 )
 
 videos = []
@@ -113,17 +109,18 @@ def signup():
 
         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}"
         payload = {"email": email, "password": password, "returnSecureToken": True}
-        data = requests.post(url, json=payload, timeout=10).json()
+        resp = requests.post(url, json=payload)
+        data = resp.json()
 
         if "error" in data:
             flash(f"Signup failed: {data['error']['message']}", "error")
             return redirect(url_for("signup"))
+
         uid = data["localId"]
         user = User(uid, email)
-        session["user_email"] = email
-        session["user_id"] = uid
+        user_store[uid] = user
         login_user(user)
-        flash("Account created & logged in successfully!", "success")
+        flash("Account created & logged in!", "success")
         return redirect(url_for("home"))
 
     return render_template("signup.html")
@@ -139,15 +136,16 @@ def login():
 
         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}"
         payload = {"email": email, "password": password, "returnSecureToken": True}
-        data = requests.post(url, json=payload, timeout=10).json()
+        resp = requests.post(url, json=payload)
+        data = resp.json()
 
         if "error" in data:
             flash(f"Login failed: {data['error']['message']}", "error")
             return redirect(url_for("login"))
+
         uid = data["localId"]
         user = User(uid, email)
-        session["user_email"] = email
-        session["user_id"] = uid
+        user_store[uid] = user
         login_user(user)
         flash("Logged in successfully!", "success")
         return redirect(url_for("home"))
@@ -158,8 +156,6 @@ def login():
 @login_required
 def logout():
     logout_user()
-    session.pop("user_email", None)
-    session.pop("user_id", None)
     flash("Logged out successfully!", "info")
     return redirect(url_for("login"))
 
@@ -172,21 +168,19 @@ def upload():
             flash("No file selected", "error")
             return redirect(url_for("upload"))
         try:
-            result = cloudinary.uploader.upload_large(
-                file.stream, resource_type="video", folder="video_uploads"
-            )
-            video_url = result["secure_url"]
+            result = cloudinary.uploader.upload_large(file.stream, resource_type="video", folder="video_uploads")
             videos.append({
-                "url": video_url,
+                "url": result["secure_url"],
                 "uploader": current_user.email,
                 "filename": file.filename,
-                "upload_time": result.get("created_at", ""),
+                "upload_time": result.get("created_at", "")
             })
             flash("Video uploaded successfully!", "success")
             return redirect(url_for("view_videos"))
         except Exception as e:
             flash(f"Upload failed: {str(e)}", "error")
             return redirect(url_for("upload"))
+
     return render_template("upload.html")
 
 @app.route("/videos")
@@ -200,6 +194,6 @@ def my_videos():
     user_videos = [v for v in videos if v["uploader"] == current_user.email]
     return render_template("viewer.html", videos=user_videos)
 
-# ----------------- MAIN -----------------
+# ----------------- RUN APP -----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(debug=True, host="0.0.0.0", port=8000)
