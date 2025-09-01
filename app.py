@@ -1,9 +1,14 @@
-import os
 import json
 import requests
 from flask import Flask, render_template, request, redirect, url_for, flash, session
-from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
-from flask_session import Session
+from flask_login import (
+    LoginManager,
+    UserMixin,
+    login_user,
+    login_required,
+    logout_user,
+    current_user,
+)
 import firebase_admin
 from firebase_admin import credentials
 import cloudinary
@@ -11,31 +16,60 @@ import cloudinary.uploader
 
 # ----------------- APP SETUP -----------------
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "super_secure_key_123")
-
-# Use Flask-Session for persistent sessions
-app.config["SESSION_TYPE"] = "filesystem"  # Use filesystem for Azure
-app.config["SESSION_FILE_DIR"] = "/tmp/flask_session"
-app.config["SESSION_PERMANENT"] = False
-app.config["SESSION_USE_SIGNER"] = True
-app.config["SESSION_COOKIE_SECURE"] = True  # Ensure HTTPS
-app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-Session(app)
+app.secret_key = "super_secure_key_123"  # Hardcoded secret key
+app.config.update(
+    SESSION_COOKIE_SECURE=False,  # False for testing HTTP
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+)
 
 # ----------------- FIREBASE CONFIG -----------------
-if "FIREBASE_CONFIG" in os.environ:
-    cred_dict = json.loads(os.environ["FIREBASE_CONFIG"])
-    if "private_key" in cred_dict:
-        cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
-    cred = credentials.Certificate(cred_dict)
-else:
-    cred = credentials.Certificate("firebase_config.json")
+cred_dict = {
+    "type": "service_account",
+    "project_id": "video-656cd",
+    "private_key_id": "8818b8bdfea9c1dc64627d12c99aa68a92898c99",
+    "private_key": """-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC4nFSHDBInSBYg
+X88dxsATpGdsRbGuJPSs7gSGwBu9Fsod11TMPYUJa/Wk7b9E6/Xz4shjNN6RSaVq
+WeZSDl4PvqMrJXXu3CEG3Pkb6TNPlitoHVSWuhqNCjUD1+5ooQ7sSyCAgtOfsM8B
+bsDfhPp+XAns/SbrvE05tOiUfFnUUwrQ32aZW6R8PLGrVAjrxIWisRQ3g30dm1NQ
+bYcipoi63RNM8NX+Qnq6r2pm8+WGJknwBchSabbOOPjwBksOceQIq2iAthMyb2K5
+Km1HICbe7VKdd2sSe0suG5DJG+jYNnXOBderAtGFrB0r8qKCZpEUMUJg40xcZPvD
+6b8MHbjZAgMBAAECggEAEWMj8O45nXqEHvt3GeJYv+DZntB3miO/6bOnOHvKgQYu
+9h2MTooyx/7jjWuY+qhQq24+Gl3l4oAxtLEP6MWSpV/6pTsrfto7wBY63h6aJxJJ
+N06f42xWyNbfxGNngHI+4hF3V7M6tE0mSgfA4ax4HUOU6b20FzrOeTNpPmbx3PXm
+GsOZcSs7CZAh7JVBuvOpm/MsFHq2xWgW4H88dZqWboZbHQn/wqkO4hTaYWelhlPC
+bsyLFBicbMEIl5mMn0hPbL8qVdxAKvOa+D+QXp1h+H+Ef+8khWkwFXWUketPScpa
+JtUGQF7J+UiedXVdwNxKJ+PZHfLtpDNWBOQjbtKi4wKBgQDya1YpadW6vQXJpKaj
+bTZC7RmLVNVIN6Do2gMdMhXrV40Ha7xGscHfOnGDPS2Izk+rTj4NZrO+31ktTHgi
+qab8OzJs5JFGc7qxw57F/cIJT+mWQTKFfTh11wb/mlSzySZfDpb7AIcuodZ+EgEk
+tatB1E37O21f/CKXAFlbljtOowKBgQDC8+34s1I6Qc9YeYMZtlKDrJSRbEJc9R9B
+BrMz97JPqRTLbtsmR4Mis4kjj02CUM3w1OCj+syyDfX9ltEb2s9605tnMXKVaOz5
+oM/qTTbbRFcz7sq3Jn7OLgOVCjPsaZhqzvqF7UaOQOYeQh5Q+jTZaeatsy0nKRQp
+UmUYvwV+UwKBgCX+7OJQ1E8QkXepdvTmiTq0LuzHvyYykeXtRc+tqgHZFyGyoS/z
+bI+weVo4nIp0y8ft24v+LO4d07xl3+6O6L1gCedHa/2+5eQ25QvjWiZbgCEs1t5V
+YiQWL+KgLeaAAKOlhcSRsJ5+f0ADUmqOjukifZaDGgGRY1qHk3nnciRBAoGAW6N5
+2wu/vS6uHnKP04hGZSq8c1cmIrf+Rvy1Q9pM8PETm0Syst2uoKMv9Y0o6/a7t1b5
+eVss2Q2C8f7wsF08ZgoN5IXzzJOTwQt8cDB3dr47F2hJ1am8tYIfoPE40woX4S0F
+yeps3fVXtiVyRrI2IXSMQF4W/W9r0LiwWN+B340CgYEAueQaiLgvgbFPxn1imE25
+JXiIerhcjvbL5XOEaMayb1Jpazo88AGX9GaslxE9AE0XyMlw1+vmF5y5Y/xyjBLR
+UJi/Nv8rgmRgD9Irihut3f3/X3Ku/JOZmt9c0UeMfoc0F9yMJvOrjINTYOB2n2h9
+I7wr4Gh+26oRWUnvjNBNQ0s=
+-----END PRIVATE KEY-----""",
+    "client_email": "firebase-adminsdk-fbsvc@video-656cd.iam.gserviceaccount.com",
+    "client_id": "102872420138978231133",
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/firebase-adminsdk-fbsvc@video-656cd.iam.gserviceaccount.com",
+    "universe_domain": "googleapis.com"
+}
 
+cred = credentials.Certificate(cred_dict)
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
-FIREBASE_WEB_API_KEY = os.environ.get("FIREBASE_WEB_API_KEY", "YOUR_FIREBASE_WEB_API_KEY")
+FIREBASE_WEB_API_KEY = "AIzaSyDu92oz4n6y1anUuampNve5jxrCbPWogdk"
 
 # ----------------- FLASK-LOGIN SETUP -----------------
 login_manager = LoginManager()
@@ -55,9 +89,9 @@ def load_user(user_id):
 
 # ----------------- CLOUDINARY CONFIG -----------------
 cloudinary.config(
-    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME", "dmr3w4jgu"),
-    api_key=os.environ.get("CLOUDINARY_API_KEY", "321578829594452"),
-    api_secret=os.environ.get("CLOUDINARY_API_SECRET", "k9XfYOMX-rWPf9kannC39Ja1sIE"),
+    cloud_name="dmr3w4jgu",
+    api_key="321578829594452",
+    api_secret="k9XfYOMX-rWPf9kannC39Ja1sIE",
 )
 
 videos = []
@@ -79,20 +113,18 @@ def signup():
 
         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signUp?key={FIREBASE_WEB_API_KEY}"
         payload = {"email": email, "password": password, "returnSecureToken": True}
-        response = requests.post(url, json=payload, timeout=10)
-        data = response.json()
+        data = requests.post(url, json=payload, timeout=10).json()
 
         if "error" in data:
             flash(f"Signup failed: {data['error']['message']}", "error")
             return redirect(url_for("signup"))
-        else:
-            uid = data["localId"]
-            user = User(uid, email)
-            session["user_email"] = email
-            session["user_id"] = uid
-            login_user(user)
-            flash("Account created & logged in successfully!", "success")
-            return redirect(url_for("home"))
+        uid = data["localId"]
+        user = User(uid, email)
+        session["user_email"] = email
+        session["user_id"] = uid
+        login_user(user)
+        flash("Account created & logged in successfully!", "success")
+        return redirect(url_for("home"))
 
     return render_template("signup.html")
 
@@ -107,20 +139,18 @@ def login():
 
         url = f"https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key={FIREBASE_WEB_API_KEY}"
         payload = {"email": email, "password": password, "returnSecureToken": True}
-        response = requests.post(url, json=payload, timeout=10)
-        data = response.json()
+        data = requests.post(url, json=payload, timeout=10).json()
 
         if "error" in data:
             flash(f"Login failed: {data['error']['message']}", "error")
             return redirect(url_for("login"))
-        else:
-            uid = data["localId"]
-            user = User(uid, email)
-            session["user_email"] = email
-            session["user_id"] = uid
-            login_user(user)
-            flash("Logged in successfully!", "success")
-            return redirect(url_for("home"))
+        uid = data["localId"]
+        user = User(uid, email)
+        session["user_email"] = email
+        session["user_id"] = uid
+        login_user(user)
+        flash("Logged in successfully!", "success")
+        return redirect(url_for("home"))
 
     return render_template("login.html")
 
@@ -142,24 +172,21 @@ def upload():
             flash("No file selected", "error")
             return redirect(url_for("upload"))
         try:
-            upload_result = cloudinary.uploader.upload_large(
+            result = cloudinary.uploader.upload_large(
                 file.stream, resource_type="video", folder="video_uploads"
             )
-            video_url = upload_result["secure_url"]
-            videos.append(
-                {
-                    "url": video_url,
-                    "uploader": current_user.email,
-                    "filename": file.filename,
-                    "upload_time": upload_result.get("created_at", ""),
-                }
-            )
+            video_url = result["secure_url"]
+            videos.append({
+                "url": video_url,
+                "uploader": current_user.email,
+                "filename": file.filename,
+                "upload_time": result.get("created_at", ""),
+            })
             flash("Video uploaded successfully!", "success")
             return redirect(url_for("view_videos"))
         except Exception as e:
             flash(f"Upload failed: {str(e)}", "error")
             return redirect(url_for("upload"))
-
     return render_template("upload.html")
 
 @app.route("/videos")
@@ -175,5 +202,4 @@ def my_videos():
 
 # ----------------- MAIN -----------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=8000, debug=True)
