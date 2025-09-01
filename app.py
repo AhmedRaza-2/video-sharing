@@ -1,7 +1,7 @@
 import os
 import json
 import requests
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_login import (
     LoginManager,
     UserMixin,
@@ -15,11 +15,11 @@ from firebase_admin import credentials
 import cloudinary
 import cloudinary.uploader
 
+# ----------------- APP SETUP -----------------
 app = Flask(__name__)
-# Use SECRET_KEY from env if available
-app.secret_key = os.environ.get("SECRET_KEY", "super_secure_key_123")  
+app.secret_key = os.environ.get("SECRET_KEY", "super_secure_key_123")
 
-# Firebase config
+# ----------------- FIREBASE CONFIG -----------------
 if "FIREBASE_CONFIG" in os.environ:
     cred_dict = json.loads(os.environ["FIREBASE_CONFIG"])
     if "private_key" in cred_dict:
@@ -28,18 +28,17 @@ if "FIREBASE_CONFIG" in os.environ:
 else:
     # Only fallback for local dev
     cred = credentials.Certificate("firebase_config.json")
+
 if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
 # Firebase Web API key
-FIREBASE_WEB_API_KEY = "AIzaSyDu92oz4n6y1anUuampNve5jxrCbPWogdk"
+FIREBASE_WEB_API_KEY = os.environ.get("FIREBASE_WEB_API_KEY", "YOUR_FIREBASE_WEB_API_KEY")
 
 # ----------------- FLASK-LOGIN SETUP -----------------
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
-
-user_store = {}
 
 
 class User(UserMixin):
@@ -47,28 +46,30 @@ class User(UserMixin):
         self.id = uid
         self.email = email
 
-
 @login_manager.user_loader
 def load_user(user_id):
-    return user_store.get(user_id)
+    if session.get("user_id") == user_id:
+        return User(user_id, session.get("user_email"))
+    return None
+
 
 
 # ----------------- CLOUDINARY CONFIG -----------------
 cloudinary.config(
-    cloud_name="dmr3w4jgu",
-    api_key="321578829594452",
-    api_secret="k9XfYOMX-rWPf9kannC39Ja1sIE",
+    cloud_name=os.environ.get("CLOUDINARY_CLOUD_NAME", "dmr3w4jgu"),
+    api_key=os.environ.get("CLOUDINARY_API_KEY", "321578829594452"),
+    api_secret=os.environ.get("CLOUDINARY_API_SECRET", "k9XfYOMX-rWPf9kannC39Ja1sIE"),
 )
 
-videos = []
+videos = []  # Simple in-memory store; consider DB for production
 
 
 # ----------------- ROUTES -----------------
-@app.route("/my_videos")
+@app.route("/")
 @login_required
-def my_videos():
-    user_videos = [v for v in videos if v["uploader"] == current_user.email]
-    return render_template("viewer.html", videos=user_videos)
+def home():
+    return render_template("index.html")
+
 
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
@@ -87,14 +88,16 @@ def signup():
 
         if "error" in data:
             flash(f"Signup failed: {data['error']['message']}", "error")
-            return redirect(url_for("signup"))  # ✅ redirect on error
+            return redirect(url_for("signup"))
         else:
             uid = data["localId"]
-            flask_user = User(uid, email)
-            user_store[uid] = flask_user
-            login_user(flask_user)
+            user = User(uid, email)
+            session["user_email"] = email
+            session["user_id"] = uid
+            login_user(user)
             flash("Account created & logged in successfully!", "success")
             return redirect(url_for("home"))
+
     return render_template("signup.html")
 
 
@@ -115,14 +118,15 @@ def login():
 
         if "error" in data:
             flash(f"Login failed: {data['error']['message']}", "error")
-            return redirect(url_for("login"))  # ✅ redirect on error
+            return redirect(url_for("login"))
         else:
             uid = data["localId"]
-            flask_user = User(uid, email)
-            user_store[uid] = flask_user
-            login_user(flask_user)
+            user = User(uid, email)
+            session["user_email"] = email
+            session["user_id"] = uid
+            login_user(user)
             flash("Logged in successfully!", "success")
-            return redirect(url_for("home")) # ✅ redirect on success
+            return redirect(url_for("home"))
 
     return render_template("login.html")
 
@@ -131,14 +135,10 @@ def login():
 @login_required
 def logout():
     logout_user()
+    session.pop("user_email", None)
+    session.pop("user_id", None)
     flash("Logged out successfully!", "info")
     return redirect(url_for("login"))
-
-
-@app.route("/")
-@login_required
-def home():
-    return render_template("index.html")
 
 
 @app.route("/upload", methods=["GET", "POST"])
@@ -176,6 +176,13 @@ def upload():
 @login_required
 def view_videos():
     return render_template("viewer.html", videos=videos)
+
+
+@app.route("/my_videos")
+@login_required
+def my_videos():
+    user_videos = [v for v in videos if v["uploader"] == current_user.email]
+    return render_template("viewer.html", videos=user_videos)
 
 
 # ----------------- MAIN -----------------
