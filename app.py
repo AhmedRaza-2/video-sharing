@@ -1,6 +1,7 @@
 import json
 import logging
 import requests
+from flask_session import Session
 from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_login import (
     LoginManager,
@@ -70,6 +71,12 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
 FIREBASE_WEB_API_KEY = "AIzaSyDu92oz4n6y1anUuampNve5jxrCbPWogdk"
+
+# Configure server-side session (important for Azure!)
+app.config["SESSION_TYPE"] = "filesystem"  # or "redis" if you want faster
+app.config["SESSION_FILE_DIR"] = "/tmp/flask_session"  # works in Azure Linux
+app.config["SESSION_PERMANENT"] = False
+Session(app)
 
 # ----------------- FLASK-LOGIN -----------------
 login_manager = LoginManager()
